@@ -5,7 +5,7 @@
 #include<sys/stat.h>
 
 #define BIG_BUFFER_SIZE 1000
-#define BUFFER_SIZE 100
+#define BUFFER_SIZE 500
 
 typedef enum FILETYPE {
 	F_PGP,
