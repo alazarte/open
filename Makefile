@@ -1,10 +1,15 @@
-all: clean build
+in=main.c
+out=open
+bin_folder=$(HOME)/System/bin
+cflags=-Wall -Wextra
+
+all: clean build install
 
 clean:
-	if [ -f open ]; then rm open; fi
+	rm -f $(out)
 
 build:
-	cc -Wall -Wextra -o open open.c
+	cc $(cflags) -o $(out) $(in)
 
 install:
-	cp open ${HOME}/System/bin
+	cp $(out) $(bin_folder)

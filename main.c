@@ -12,8 +12,9 @@ typedef enum FILETYPE {
 	F_ASCII,
 	F_PDF,
 	F_MP4,
-	F_PNG,
+	F_IMG,
 	F_HTML,
+	F_DIR,
 	F_DEFAULT,
 } FileType;
 
@@ -23,7 +24,9 @@ const char *gpg_encrypt_file_command = "gpg -e -r %s -o %s %s\n";
 const char *pdf_reader_command = "zathura";
 const char *media_player_command = "mpv";
 // TODO incomplete command
-const char *image_viewer_command = "feh";
+const char *image_viewer_command =
+    "feh -e \"yudit/13\" -. -B \"#000000\" -d --edit";
+const char *file_explorer_command = "pcmanfm";
 
 int run_system(char *command)
 {
@@ -82,11 +85,10 @@ void open_encrypted_and_reencrypt(char *filename)
 	sanitize_filename(tmp_filename, sanitized);
 	sprintf(buffer, gpg_decrypt_file_command, getenv("GPG_KEY"), filename,
 		sanitized);
-	if(run_system(buffer) != 0) {
+	if (run_system(buffer) != 0) {
 		printf("Command failed!\n");
 		return;
 	}
-
 	// get hash of the decrypted file before opening
 	char original_hash[100];
 	sprintf(buffer, md5_check_command, sanitized);
@@ -130,7 +132,7 @@ FileType check_file_type(char *filename)
 	}
 
 	char buffer[BIG_BUFFER_SIZE] = { 0 };
-	sprintf(buffer, "file -b %s", filename);
+	sprintf(buffer, "file -b \"%s\"", filename);
 
 	char output[BUFFER_SIZE] = { 0 };
 	if (run_save_stdout(buffer, output) != 0) {
@@ -154,10 +156,73 @@ FileType check_file_type(char *filename)
 			return F_MP4;
 		}
 	} else if (strstr(output, "PNG") != NULL) {
-		return F_PNG;
+		return F_IMG;
+	} else if (strstr(output, "JPEG") != NULL) {
+		return F_IMG;
+	} else if (strstr(output, "directory") != NULL) {
+		return F_DIR;
 	}
 
 	return F_DEFAULT;
+}
+
+char valid_url(char *url)
+{
+	char *url_prefix = "http.://";
+
+	while (*url_prefix != '\0') {
+		if (*url_prefix != *url && *url_prefix != '.') {
+			return 0;
+		}
+		url_prefix++;
+		url++;
+	}
+
+	return 1;
+}
+
+void format_final_command(char *final_command, char *fname, char is_url)
+{
+	char *format_command = "%s \"%s\"";
+
+	if (is_url) {
+		sprintf(final_command, format_command, getenv("BROWSER"),
+			fname);
+		return;
+	}
+
+	switch (check_file_type(fname)) {
+	case F_HTML:
+		sprintf(final_command, format_command, getenv("BROWSER"),
+			fname);
+		break;
+	case F_PGP:
+		sprintf(final_command, "echo 'Completed?'");
+		break;
+	case F_ASCII:
+		sprintf(final_command, format_command, getenv("EDITOR"), fname);
+		break;
+	case F_PDF:
+		sprintf(final_command, format_command, pdf_reader_command,
+			fname);
+		break;
+	case F_MP4:
+		// TODO shouldn't be an option, should be F_MP4 and play with fplay or something
+		sprintf(final_command, format_command, media_player_command,
+			fname);
+		break;
+	case F_IMG:
+		sprintf(final_command, format_command, image_viewer_command,
+			fname);
+		break;
+	case F_DIR:
+		sprintf(final_command, format_command, file_explorer_command,
+			fname);
+		break;
+	case F_DEFAULT:
+		sprintf(final_command, "xdg-open %s", fname);
+		break;
+	}
 }
 
 int main(int argn, char **argv)
@@ -168,39 +233,22 @@ int main(int argn, char **argv)
 	}
 
 	char *fname = argv[1];
+	char is_url = 0;
 
 	int stat = access(fname, F_OK);
 	if (stat != 0) {
+		// TODO check if it's an URL, and parse it
 		fprintf(stderr, "File not found\n");
-		return 1;
+		if (! valid_url(fname)) {
+			fprintf(stderr, "Not a valid URL either\n");
+			return 1;
+		}
+		is_url = 1;
 	}
 
 	char final_command[BUFFER_SIZE];
 
-	switch (check_file_type(fname)) {
-	case F_HTML:
-		sprintf(final_command, "%s %s", getenv("BROWSER"), fname);
-		break;
-	case F_PGP:
-		sprintf(final_command, "echo 'Completed?'");
-		break;
-	case F_ASCII:
-		sprintf(final_command, "%s %s", getenv("EDITOR"), fname);
-		break;
-	case F_PDF:
-		sprintf(final_command, "%s %s", pdf_reader_command, fname);
-		break;
-	case F_MP4:
-		// TODO shouldn't be an option, should be F_MP4 and play with fplay or something
-		sprintf(final_command, "%s %s", media_player_command, fname);
-		break;
-	case F_PNG:
-		sprintf(final_command, "%s %s", image_viewer_command, fname);
-		break;
-	case F_DEFAULT:
-		sprintf(final_command, "xdg-open %s", fname);
-		break;
-	}
+	format_final_command(final_command, fname, is_url);
 
 	printf("final_command=%s\n", final_command);
 	if (run_system(final_command) != 0) {
